@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Ровно 6.2.4: последняя версия под MIT. С 6.5.0 лицензия AGPL/коммерческая. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="[6.2.4]" />
+    <!-- PDFsharp 6.2.4 тянет Pkcs 8.0.1 с известными уязвимостями; поднимаем до исправленной версии. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Шрифты лежат в проекте и копируются рядом с программой при сборке и публикации. -->
+    <None Update="Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
