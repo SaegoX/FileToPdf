@@ -9,14 +9,8 @@ namespace FileToPdf.Web.Converters;
 public static class TextDecoder
 {
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-    private static readonly Encoding Windows1251;
-
-    static TextDecoder()
-    {
-        // В .NET старые кодировки вроде 1251 по умолчанию недоступны, их нужно подключить.
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Windows1251 = Encoding.GetEncoding(1251);
-    }
+    // Доступна, потому что Program.cs при старте регистрирует CodePagesEncodingProvider.
+    private static readonly Encoding Windows1251 = Encoding.GetEncoding(1251);
 
     public static string ReadAll(Stream input)
     {

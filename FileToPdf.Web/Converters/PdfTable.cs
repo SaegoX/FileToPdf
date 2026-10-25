@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 
@@ -11,18 +10,24 @@ namespace FileToPdf.Web.Converters;
 /// </summary>
 public static class PdfTable
 {
-    /// <summary>Больше строк MigraDoc раскладывает слишком долго, а такой PDF всё равно никто не читает.</summary>
-    public const int MaxRows = 5000;
+    /// <summary>Около 10 секунд на раскладку в худшем случае; больше — уже неудобно ждать.</summary>
+    public const int MaxRows = 10000;
 
     // Ширину столбцов прикидываем по первым строкам: этого достаточно и не тратит время на огромных файлах.
     private const int WidthSampleRows = 200;
-    private const int MinColumnWeight = 4;
-    private const int MaxColumnWeight = 40;
+    // Столько символов любой столбец получает гарантированно, чтобы короткие значения и заголовки не обрезались.
+    private const int ShortTextChars = 8;
+    // Длиннее этого текст всё равно переносится, лишняя ширина ему не нужна.
+    private const int MaxColumnChars = 40;
+    // Средняя ширина символа Noto Sans в долях кегля, с запасом на жирный заголовок.
+    private const double AverageCharWidth = 0.6;
+    private const double CellPaddingPt = 3;
+
+    private const char NoBreakSpace = (char)0xA0;
 
     private static readonly Color HeaderShading = new(230, 230, 230);
     private static readonly Color StripeShading = new(246, 246, 246);
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
-    private const char ZeroWidthSpace = '​';
 
     public static void Render(IReadOnlyList<string[]> rows, ConversionOptions options, Stream output)
     {
@@ -30,21 +35,20 @@ public static class PdfTable
             throw new ConversionException($"Слишком большая таблица: {rows.Count - 1} строк, максимум {MaxRows}. Разбейте файл на части.");
 
         var columnCount = rows.Max(r => r.Length);
+        var fontSize = columnCount switch { <= 6 => 9, <= 12 => 8, _ => 7 };
         var document = MigraDocPdf.CreateDocument(options);
 
         var table = document.LastSection.AddTable();
-        table.Format.Font.Size = columnCount switch { <= 6 => 9, <= 12 => 8, _ => 7 };
+        table.Format.Font.Size = fontSize;
         table.Borders.Width = 0.5;
         table.Borders.Color = Colors.Gray;
-        table.LeftPadding = table.RightPadding = Unit.FromPoint(3);
+        table.LeftPadding = table.RightPadding = Unit.FromPoint(CellPaddingPt);
         table.TopPadding = table.BottomPadding = Unit.FromPoint(1.5);
 
-        // Ширина между полями делится между столбцами пропорционально длине их содержимого.
-        var weights = ColumnWeights(rows, columnCount);
-        var contentWidth = MigraDocPdf.ContentWidth(options).Point;
+        var widths = ColumnWidths(rows, columnCount, MigraDocPdf.ContentWidth(options).Point, fontSize);
         for (var i = 0; i < columnCount; i++)
         {
-            var column = table.AddColumn(Unit.FromPoint(contentWidth * weights[i] / weights.Sum()));
+            var column = table.AddColumn(Unit.FromPoint(widths[i]));
             if (IsNumericColumn(rows, i))
                 column.Format.Alignment = ParagraphAlignment.Right;
         }
@@ -78,48 +82,40 @@ public static class PdfTable
                 if (l > 0)
                     paragraph.AddLineBreak();
                 if (lines[l].Length > 0)
-                    paragraph.AddText(AllowBreaksInLongWords(lines[l]));
+                    paragraph.AddText(MigraDocPdf.AllowBreaksInLongWords(lines[l]));
             }
         }
     }
 
     /// <summary>
-    /// MigraDoc переносит строки только по пробелам, поэтому длинная ссылка или код без пробелов
-    /// вылезает в соседнюю ячейку. Вставляем в такие слова невидимые места переноса.
+    /// Каждый столбец сначала получает место под короткий текст (до <see cref="ShortTextChars"/> символов),
+    /// чтобы узкие столбцы вроде «день» или «пара» не обрезались. Остаток ширины делится
+    /// между длинными столбцами пропорционально длине их текста.
     /// </summary>
-    private static string AllowBreaksInLongWords(string text)
+    private static double[] ColumnWidths(IReadOnlyList<string[]> rows, int columnCount, double contentWidth, double fontSize)
     {
-        const int chunk = 10;
-        var result = new StringBuilder(text.Length + text.Length / chunk);
-        var run = 0;
-        foreach (var c in text)
-        {
-            run = char.IsWhiteSpace(c) ? 0 : run + 1;
-            if (run > chunk)
-            {
-                result.Append(ZeroWidthSpace);
-                run = 1;
-            }
-
-            result.Append(c);
-        }
-
-        return result.ToString();
-    }
-
-    private static int[] ColumnWeights(IReadOnlyList<string[]> rows, int columnCount)
-    {
-        var weights = new int[columnCount];
+        var lengths = new int[columnCount];
         foreach (var row in rows.Take(WidthSampleRows))
         {
             for (var i = 0; i < row.Length; i++)
             {
                 var longestLine = row[i].ReplaceLineEndings("\n").Split('\n').Max(l => l.Length);
-                weights[i] = Math.Max(weights[i], longestLine);
+                lengths[i] = Math.Max(lengths[i], longestLine);
             }
         }
 
-        return weights.Select(w => Math.Clamp(w, MinColumnWeight, MaxColumnWeight)).ToArray();
+        var charWidth = fontSize * AverageCharWidth;
+        var baseWidths = lengths.Select(l => 2 * CellPaddingPt + Math.Clamp(l, 1, ShortTextChars) * charWidth).ToArray();
+        var extraWeights = lengths.Select(l => (double)Math.Clamp(l, ShortTextChars, MaxColumnChars) - ShortTextChars).ToArray();
+
+        var free = contentWidth - baseWidths.Sum();
+        if (free <= 0 || extraWeights.Sum() == 0)
+        {
+            // Либо все столбцы короткие, либо их так много, что и минимум не влезает: делим пропорционально.
+            return baseWidths.Select(w => contentWidth * w / baseWidths.Sum()).ToArray();
+        }
+
+        return baseWidths.Select((w, i) => w + free * extraWeights[i] / extraWeights.Sum()).ToArray();
     }
 
     /// <summary>Столбец числовой, если все непустые значения под заголовком — числа (1 234,5 или 1234.5).</summary>
@@ -131,7 +127,7 @@ public static class PdfTable
             if (column >= rows[r].Length || rows[r][column].Length == 0)
                 continue;
 
-            var value = rows[r][column].Replace(' ', ' ');
+            var value = rows[r][column].Replace(NoBreakSpace, ' ');
             if (!decimal.TryParse(value, NumberStyles.Number, Russian, out _) &&
                 !decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out _))
                 return false;

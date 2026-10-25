@@ -2,9 +2,15 @@ using FileToPdf.Web.Converters;
 using FileToPdf.Web.Converters.Csv;
 using FileToPdf.Web.Converters.Images;
 using FileToPdf.Web.Converters.Text;
+using FileToPdf.Web.Converters.Xml;
 using FileToPdf.Web.Fonts;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using PdfSharp.Fonts;
+
+// В .NET старые кодировки (Windows-1251 и др.) по умолчанию недоступны. Подключаем их для всего приложения:
+// они нужны и при чтении TXT/CSV, и XmlReader-у для файлов с encoding="windows-1251".
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +20,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddSingleton<IPdfConverter, TextToPdfConverter>();
 builder.Services.AddSingleton<IPdfConverter, ImageToPdfConverter>();
 builder.Services.AddSingleton<IPdfConverter, CsvToPdfConverter>();
+builder.Services.AddSingleton<IPdfConverter, XmlToPdfConverter>();
 builder.Services.AddSingleton<ConverterResolver>();
 
 var app = builder.Build();
