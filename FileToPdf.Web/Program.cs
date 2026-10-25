@@ -1,35 +1,66 @@
+using FileToPdf.Web.Converters;
+using FileToPdf.Web.Converters.Text;
 using FileToPdf.Web.Fonts;
-using PdfSharp.Drawing;
+using Microsoft.AspNetCore.Mvc;
 using PdfSharp.Fonts;
-using PdfSharp.Pdf;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddProblemDetails();
+
+// Конвертеры: чтобы добавить формат, достаточно зарегистрировать здесь новый класс.
+builder.Services.AddSingleton<IPdfConverter, TextToPdfConverter>();
+builder.Services.AddSingleton<ConverterResolver>();
+
 var app = builder.Build();
 
 // PDFsharp хранит поставщика шрифтов в статическом поле, поэтому задаём его один раз при старте.
 GlobalFontSettings.FontResolver = new AppFontResolver(Path.Combine(AppContext.BaseDirectory, "Fonts"));
 
+// Непредвиденная ошибка → запись в журнал и ответ 500 без технических подробностей.
+app.UseExceptionHandler();
+
+var maxFileSizeMb = app.Configuration.GetValue("Conversion:MaxFileSizeMb", 20);
+var maxFileSize = maxFileSizeMb * 1024L * 1024;
+
 app.MapGet("/", () => "FileToPdf работает");
 
-// Временный эндпоинт этапа 1: проверка, что кириллица попадает в PDF. Уберём на этапе 2.
-app.MapGet("/api/hello-pdf", () =>
+app.MapGet("/api/formats", (ConverterResolver resolver) => resolver.SupportedExtensions.Order());
+
+// Принимает файл (multipart/form-data, поле "file") и сразу возвращает PDF. На диск ничего не пишется.
+app.MapPost("/api/convert", (IFormFile file, ConverterResolver resolver, [FromForm] bool landscape = false) =>
 {
-    using var document = new PdfDocument();
-    var page = document.AddPage();
+    if (file.Length == 0)
+        return Results.Problem(detail: "Файл пустой.", statusCode: StatusCodes.Status400BadRequest);
 
-    using (var gfx = XGraphics.FromPdfPage(page))
+    if (file.Length > maxFileSize)
+        return Results.Problem(detail: $"Файл больше {maxFileSizeMb} МБ.", statusCode: StatusCodes.Status413PayloadTooLarge);
+
+    var converter = resolver.FindFor(file.FileName);
+    if (converter is null)
     {
-        var title = new XFont(AppFontResolver.DefaultFamily, 24, XFontStyleEx.Bold);
-        var text = new XFont(AppFontResolver.DefaultFamily, 12);
-
-        gfx.DrawString("Привет, PDF!", title, XBrushes.Black, new XPoint(50, 80));
-        gfx.DrawString("Съешь же ещё этих мягких французских булок, да выпей чаю.", text, XBrushes.Black, new XPoint(50, 120));
-        gfx.DrawString("Символы: № «кавычки» — тире, € ₽, ЁЁ ёё", text, XBrushes.Black, new XPoint(50, 140));
+        var supported = string.Join(", ", resolver.SupportedExtensions.Order());
+        return Results.Problem(
+            detail: $"Формат «{Path.GetExtension(file.FileName)}» не поддерживается. Поддерживаются: {supported}.",
+            statusCode: StatusCodes.Status415UnsupportedMediaType);
     }
 
-    using var stream = new MemoryStream();
-    document.Save(stream);
-    return Results.File(stream.ToArray(), "application/pdf", "hello.pdf");
-});
+    using var output = new MemoryStream();
+    try
+    {
+        using var input = file.OpenReadStream();
+        converter.Convert(input, output, new ConversionOptions(landscape));
+    }
+    catch (ConversionException ex)
+    {
+        return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+
+    return Results.File(output.ToArray(), "application/pdf", Path.ChangeExtension(file.FileName, ".pdf"));
+})
+// Защита от подделки запросов нужна для форм с авторизацией по cookie; у нас ни того, ни другого.
+.DisableAntiforgery()
+// Сервер отклонит слишком большой запрос, не читая его целиком. +1 МБ на служебную часть формы.
+.WithMetadata(new RequestSizeLimitAttribute(maxFileSize + 1024 * 1024));
 
 app.Run();
