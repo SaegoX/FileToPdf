@@ -25,9 +25,12 @@ public sealed class ImageToPdfConverter : IPdfConverter
         input.CopyTo(buffer);
 
         // Проверяем тип по первым байтам, а не по расширению: переименованный файл не пройдёт.
-        var header = buffer.GetBuffer().AsSpan(0, (int)buffer.Length);
-        if (!header.StartsWith(PngSignature) && !header.StartsWith(JpegSignature))
+        var bytes = buffer.GetBuffer().AsSpan(0, (int)buffer.Length);
+        var isJpeg = bytes.StartsWith(JpegSignature);
+        if (!isJpeg && !bytes.StartsWith(PngSignature))
             throw new ConversionException("Файл не является изображением PNG или JPEG.");
+
+        var rotation = isJpeg ? JpegOrientation.GetClockwiseRotation(bytes) : 0;
 
         buffer.Position = 0;
         using var image = LoadImage(buffer);
@@ -41,13 +44,21 @@ public sealed class ImageToPdfConverter : IPdfConverter
         {
             var area = new XRect(Margin, Margin, page.Width.Point - 2 * Margin, page.Height.Point - 2 * Margin);
 
+            // При повороте на 90° или 270° ширина и высота картинки на листе меняются местами.
+            var sideways = rotation is 90 or 270;
+            var shownWidth = sideways ? image.PointHeight : image.PointWidth;
+            var shownHeight = sideways ? image.PointWidth : image.PointHeight;
+
             // Размер картинки в пунктах PDFsharp считает с учётом её DPI: скан 300 dpi формата A4 займёт ровно лист.
             // Большую картинку уменьшаем, маленькую не растягиваем, чтобы иконка не превратилась в кашу из пикселей.
-            var scale = Math.Min(1, Math.Min(area.Width / image.PointWidth, area.Height / image.PointHeight));
+            var scale = Math.Min(1, Math.Min(area.Width / shownWidth, area.Height / shownHeight));
             var width = image.PointWidth * scale;
             var height = image.PointHeight * scale;
 
-            gfx.DrawImage(image, area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height);
+            // Переносим начало координат в центр области, поворачиваем и рисуем картинку вокруг этого центра.
+            gfx.TranslateTransform(area.X + area.Width / 2, area.Y + area.Height / 2);
+            gfx.RotateTransform(rotation);
+            gfx.DrawImage(image, -width / 2, -height / 2, width, height);
         }
 
         document.Save(output, closeStream: false);
