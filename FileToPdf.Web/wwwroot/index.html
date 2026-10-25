@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Конвертер в PDF</title>
+    <style>
+        :root {
+            --bg: #f4f5f7;
+            --card: #ffffff;
+            --text: #1f2328;
+            --muted: #656d76;
+            --border: #d0d7de;
+            --accent: #0b6bcb;
+            --accent-hover: #0958a8;
+            --error-bg: #fdecec;
+            --error-text: #a4161a;
+            --ok-bg: #e9f6ec;
+            --ok-text: #1a7f37;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: var(--bg);
+            color: var(--text);
+            font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+        }
+
+        main {
+            width: 100%;
+            max-width: 520px;
+            padding: 28px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        h1 { margin: 0 0 4px; font-size: 22px; }
+        .hint { margin: 0 0 20px; color: var(--muted); }
+
+        .drop {
+            display: block;
+            padding: 36px 16px;
+            text-align: center;
+            border: 2px dashed var(--border);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: border-color .15s, background .15s;
+        }
+        .drop:hover, .drop.over { border-color: var(--accent); background: #f0f6fd; }
+        .drop input { display: none; }
+        .drop strong { color: var(--accent); }
+        .file { margin-top: 8px; font-weight: 600; word-break: break-all; }
+
+        .options { margin: 16px 0; }
+        .options label { cursor: pointer; }
+
+        button {
+            width: 100%;
+            padding: 11px;
+            font: inherit;
+            font-weight: 600;
+            color: #fff;
+            background: var(--accent);
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) { background: var(--accent-hover); }
+        button:disabled { opacity: .55; cursor: default; }
+
+        .status { margin-top: 16px; padding: 10px 12px; border-radius: 8px; display: none; }
+        .status.error { display: block; background: var(--error-bg); color: var(--error-text); }
+        .status.ok { display: block; background: var(--ok-bg); color: var(--ok-text); }
+        .status.busy { display: block; background: var(--bg); color: var(--muted); }
+        .status a { color: inherit; font-weight: 600; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Конвертер в PDF</h1>
+    <p class="hint" id="hint">Загрузка списка форматов…</p>
+
+    <label class="drop" id="drop">
+        <input type="file" id="input">
+        <div><strong>Выберите файл</strong> или перетащите его сюда</div>
+        <div class="file" id="fileName"></div>
+    </label>
+
+    <div class="options">
+        <label><input type="checkbox" id="landscape"> Альбомная ориентация (для широких таблиц)</label>
+    </div>
+
+    <button id="convert" disabled>Конвертировать в PDF</button>
+    <div class="status" id="status" role="status"></div>
+</main>
+
+<script>
+    const drop = document.getElementById("drop");
+    const input = document.getElementById("input");
+    const fileName = document.getElementById("fileName");
+    const landscape = document.getElementById("landscape");
+    const convert = document.getElementById("convert");
+    const status = document.getElementById("status");
+    const hint = document.getElementById("hint");
+
+    let extensions = [];
+    let maxFileSizeMb = 20;
+    let file = null;
+    let lastPdfUrl = null;
+
+    // Форматы и лимит берём у сервера, чтобы страница не расходилась с ним.
+    fetch("api/formats")
+        .then(r => r.json())
+        .then(info => {
+            extensions = info.extensions;
+            maxFileSizeMb = info.maxFileSizeMb;
+            input.accept = extensions.join(",");
+            hint.textContent = `Форматы: ${extensions.join(", ")}. До ${maxFileSizeMb} МБ.`;
+        })
+        .catch(() => hint.textContent = "Не удалось связаться с сервером.");
+
+    function showStatus(kind, text) {
+        status.className = "status " + kind;
+        status.textContent = text;
+    }
+
+    function selectFile(selected) {
+        file = null;
+        convert.disabled = true;
+        fileName.textContent = "";
+        if (!selected) return;
+
+        const extension = selected.name.includes(".") ? selected.name.slice(selected.name.lastIndexOf(".")).toLowerCase() : "";
+        if (extensions.length && !extensions.includes(extension)) {
+            showStatus("error", `Формат «${extension || "без расширения"}» не поддерживается.`);
+            return;
+        }
+        if (selected.size > maxFileSizeMb * 1024 * 1024) {
+            showStatus("error", `Файл больше ${maxFileSizeMb} МБ.`);
+            return;
+        }
+
+        file = selected;
+        fileName.textContent = `${selected.name} (${formatSize(selected.size)})`;
+        convert.disabled = false;
+        status.className = "status";
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " Б";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " КБ";
+        return (bytes / 1024 / 1024).toFixed(1) + " МБ";
+    }
+
+    // Имя файла из заголовка ответа: сервер отдаёт кириллицу в виде filename*=UTF-8''...
+    function fileNameFrom(response) {
+        const header = response.headers.get("Content-Disposition") || "";
+        const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+        if (encoded) return decodeURIComponent(encoded[1]);
+        const plain = /filename="?([^";]+)"?/i.exec(header);
+        return plain ? plain[1] : "result.pdf";
+    }
+
+    input.addEventListener("change", () => selectFile(input.files[0]));
+
+    drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", e => {
+        e.preventDefault();
+        drop.classList.remove("over");
+        selectFile(e.dataTransfer.files[0]);
+    });
+
+    convert.addEventListener("click", async () => {
+        if (!file) return;
+
+        const form = new FormData();
+        form.append("file", file);
+        form.append("landscape", landscape.checked);
+
+        convert.disabled = true;
+        showStatus("busy", "Конвертация… Большие таблицы могут обрабатываться до 10–15 секунд.");
+
+        try {
+            const response = await fetch("api/convert", { method: "POST", body: form });
+            if (!response.ok) {
+                // Ошибки сервер присылает в формате ProblemDetails: понятный текст в поле detail.
+                const problem = await response.json().catch(() => null);
+                showStatus("error", problem?.detail || `Ошибка сервера (${response.status}).`);
+                return;
+            }
+
+            const name = fileNameFrom(response);
+            if (lastPdfUrl) URL.revokeObjectURL(lastPdfUrl);
+            lastPdfUrl = URL.createObjectURL(await response.blob());
+
+            const link = document.createElement("a");
+            link.href = lastPdfUrl;
+            link.download = name;
+            link.click();
+
+            showStatus("ok", "Готово: ");
+            const again = document.createElement("a");
+            again.href = lastPdfUrl;
+            again.download = name;
+            again.textContent = `скачать ${name}`;
+            status.append(again);
+        } catch {
+            showStatus("error", "Нет связи с сервером. Попробуйте ещё раз.");
+        } finally {
+            convert.disabled = !file;
+        }
+    });
+</script>
+</body>
+</html>

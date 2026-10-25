@@ -9,7 +9,7 @@ namespace FileToPdf.Web.Converters.Images;
 /// </summary>
 public sealed class ImageToPdfConverter : IPdfConverter
 {
-    // Размеры A4 и поля 1,5 см в пунктах (1 пт = 1/72 дюйма), как в MigraDocPdf.
+    // Размеры A4 и поля 1,5 см в пунктах (1 пт = 1/72 дюйма), стандарт взят из MigraDocPdf.
     private const double A4ShortSide = 595.276;
     private const double A4LongSide = 841.89;
     private const double Margin = 42.52;
@@ -19,6 +19,15 @@ public sealed class ImageToPdfConverter : IPdfConverter
 
     public IReadOnlyCollection<string> SupportedExtensions { get; } = [".png", ".jpg", ".jpeg"];
 
+    /// <summary>
+    /// Преобразует изображение из потока PNG или JPEG в PDF с учётом ориентации и параметров конвертации.
+    /// </summary>
+    /// <remarks>Exif-ориентация JPEG учитывается вручную, так как PDFsharp не поддерживает её
+    /// чтение.</remarks>
+    /// <param name="input">Входной поток с изображением PNG или JPEG.</param>
+    /// <param name="output">Выходной поток для записи PDF-документа.</param>
+    /// <param name="options">Параметры конвертации.</param>
+    /// <exception cref="ConversionException">Выбрасывается, если входной файл не является изображением PNG или JPEG.</exception>
     public void Convert(Stream input, Stream output, ConversionOptions options)
     {
         using var buffer = new MemoryStream();
@@ -40,6 +49,7 @@ public sealed class ImageToPdfConverter : IPdfConverter
         page.Width = XUnit.FromPoint(options.Landscape ? A4LongSide : A4ShortSide);
         page.Height = XUnit.FromPoint(options.Landscape ? A4ShortSide : A4LongSide);
 
+        /// Exif ориентация JPEG задаёт, как картинка должна быть повернута при отображении. PDFsharp не умеет читать Exif, поэтому поворачиваем картинку сами.
         using (var gfx = XGraphics.FromPdfPage(page))
         {
             var area = new XRect(Margin, Margin, page.Width.Point - 2 * Margin, page.Height.Point - 2 * Margin);
@@ -64,6 +74,12 @@ public sealed class ImageToPdfConverter : IPdfConverter
         document.Save(output, closeStream: false);
     }
 
+    /// <summary>
+    /// Загружает изображение из указанного потока.
+    /// </summary>
+    /// <param name="stream">Поток, содержащий данные изображения.</param>
+    /// <returns>Объект XImage, созданный из потока.</returns>
+    /// <exception cref="ConversionException">Выбрасывается, если изображение повреждено или его формат не поддерживается.</exception>
     private static XImage LoadImage(Stream stream)
     {
         try

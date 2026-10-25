@@ -5,7 +5,7 @@ namespace FileToPdf.Web.Converters.Xml;
 /// <summary>Поиск в XML списка однотипных записей и превращение его в строки таблицы.</summary>
 public static class XmlRecords
 {
-    // Записи — это когда почти все дочерние элементы контейнера называются одинаково.
+    // Записи — когда почти все дочерние элементы контейнера называются одинаково(при пороге 80% делает таблицу из тегов, если меньше, то дерево).
     private const double SameNameShare = 0.8;
 
     /// <returns>Записи или null, если XML не похож на список и его лучше показать деревом.</returns>
@@ -58,6 +58,13 @@ public static class XmlRecords
         return rows;
     }
 
+    /// <summary>
+    /// Добавляет поле в коллекцию и список столбцов, объединяя значения с существующими через точку с запятой.
+    /// </summary>
+    /// <param name="fields">Словарь для хранения пар имя-значение полей.</param>
+    /// <param name="columns">Список имен столбцов для отслеживания порядка добавления.</param>
+    /// <param name="name">Имя добавляемого поля.</param>
+    /// <param name="value">Значение, связанное с именем поля.</param>
     private static void AddField(Dictionary<string, string> fields, List<string> columns, string name, string value)
     {
         if (!columns.Contains(name))

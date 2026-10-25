@@ -12,11 +12,17 @@ using PdfSharp.Fonts;
 // они нужны и при чтении TXT/CSV, и XmlReader-у для файлов с encoding="windows-1251".
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-var builder = WebApplication.CreateBuilder(args);
+// Корень приложения — папка с exe, а не текущая папка процесса. Иначе при запуске службой или ярлыком
+// (текущая папка, например, C:\Windows\System32) не найдутся wwwroot и appsettings.json.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 builder.Services.AddProblemDetails();
 
-// Конвертеры: чтобы добавить формат, достаточно зарегистрировать здесь новый класс.
+// Регистрация типов конвертеров.
 builder.Services.AddSingleton<IPdfConverter, TextToPdfConverter>();
 builder.Services.AddSingleton<IPdfConverter, ImageToPdfConverter>();
 builder.Services.AddSingleton<IPdfConverter, CsvToPdfConverter>();
@@ -34,9 +40,13 @@ app.UseExceptionHandler();
 var maxFileSizeMb = app.Configuration.GetValue("Conversion:MaxFileSizeMb", 20);
 var maxFileSize = maxFileSizeMb * 1024L * 1024;
 
-app.MapGet("/", () => "FileToPdf работает");
+// Страница конвертера: wwwroot/index.html отдаётся по адресу "/".
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
-app.MapGet("/api/formats", (ConverterResolver resolver) => resolver.SupportedExtensions.Order());
+// Что умеет сервер: странице нужно, чтобы подсказать форматы и проверить размер ещё до загрузки.
+app.MapGet("/api/formats", (ConverterResolver resolver) =>
+    new { Extensions = resolver.SupportedExtensions.Order(), MaxFileSizeMb = maxFileSizeMb });
 
 // Принимает файл (multipart/form-data, поле "file") и сразу возвращает PDF. На диск ничего не пишется.
 app.MapPost("/api/convert", (IFormFile file, ConverterResolver resolver, [FromForm] bool landscape = false) =>
@@ -69,9 +79,11 @@ app.MapPost("/api/convert", (IFormFile file, ConverterResolver resolver, [FromFo
 
     return Results.File(output.ToArray(), "application/pdf", Path.ChangeExtension(file.FileName, ".pdf"));
 })
+
 // Защита от подделки запросов нужна для форм с авторизацией по cookie; у нас ни того, ни другого.
 .DisableAntiforgery()
-// Сервер отклонит слишком большой запрос, не читая его целиком. +1 МБ на служебную часть формы.
+
+// Проверка размера файла на стороне сервера: если кто-то обойдёт проверку в браузере, сервер всё равно не примет слишком большой файл.
 .WithMetadata(new RequestSizeLimitAttribute(maxFileSize + 1024 * 1024));
 
 app.Run();

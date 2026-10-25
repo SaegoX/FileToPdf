@@ -26,8 +26,7 @@ public sealed class XmlToPdfConverter : IPdfConverter
     {
         var settings = new XmlReaderSettings
         {
-            // DTD запрещаем: иначе маленький файл с вложенными сущностями («XML-бомба»)
-            // разворачивается в гигабайты, а внешние ссылки могут читать файлы с сервера.
+            // DTD запрещаем, защита от XXE-атак. XmlResolver = null запрещает загрузку внешних сущностей.
             DtdProcessing = DtdProcessing.Prohibit,
             XmlResolver = null,
             IgnoreComments = true,

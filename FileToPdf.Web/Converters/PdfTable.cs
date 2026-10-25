@@ -29,6 +29,13 @@ public static class PdfTable
     private static readonly Color StripeShading = new(246, 246, 246);
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
 
+    /// <summary>
+    /// Генерирует PDF-документ с таблицей на основе предоставленных строк и записывает результат в поток.
+    /// </summary>
+    /// <param name="rows">Строки таблицы, где первая строка считается заголовком.</param>
+    /// <param name="options">Параметры конвертации и оформления документа.</param>
+    /// <param name="output">Поток для вывода сгенерированного PDF-документа.</param>
+    /// <exception cref="ConversionException">Выбрасывается, если количество строк превышает максимально допустимое значение.</exception>
     public static void Render(IReadOnlyList<string[]> rows, ConversionOptions options, Stream output)
     {
         if (rows.Count - 1 > MaxRows)
@@ -70,9 +77,14 @@ public static class PdfTable
         MigraDocPdf.Render(document, output);
     }
 
+    /// <summary>
+    /// Заполняет ячейки строки значениями из массива строк, добавляя переносы строк при необходимости.
+    /// </summary>
+    /// <remarks>Если массив короче количества ячеек, оставшиеся ячейки остаются пустыми.</remarks>
+    /// <param name="row">Строка таблицы для заполнения.</param>
+    /// <param name="values">Массив значений для заполнения ячеек строки.</param>
     private static void FillRow(Row row, string[] values)
     {
-        // Строка может быть короче заголовка: недостающие ячейки остаются пустыми.
         for (var i = 0; i < values.Length; i++)
         {
             var paragraph = row.Cells[i].AddParagraph();

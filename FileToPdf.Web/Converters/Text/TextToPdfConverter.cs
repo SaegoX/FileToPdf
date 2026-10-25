@@ -2,12 +2,19 @@ namespace FileToPdf.Web.Converters.Text;
 
 /// <summary>
 /// Простой текст → PDF: каждая строка файла становится абзацем.
-/// Самый короткий пример конвертера на MigraDoc, заодно проверяет весь путь от загрузки до PDF.
+/// Просто пример использования MigraDoc, без сложной верстки. Перенос длинных строк и переход на новую страницу MigraDoc делает сам.
 /// </summary>
 public sealed class TextToPdfConverter : IPdfConverter
 {
     public IReadOnlyCollection<string> SupportedExtensions { get; } = [".txt"];
 
+    /// <summary>
+    /// Преобразует текстовый поток во входном формате в PDF-документ с использованием указанных параметров
+    /// преобразования.
+    /// </summary>
+    /// <param name="input">Входной поток с исходными текстовыми данными.</param>
+    /// <param name="output">Выходной поток для записи PDF-документа.</param>
+    /// <param name="options">Параметры преобразования для настройки процесса конвертации.</param>
     public void Convert(Stream input, Stream output, ConversionOptions options)
     {
         var text = TextDecoder.ReadAll(input);

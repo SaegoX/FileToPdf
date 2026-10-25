@@ -23,8 +23,8 @@ public static class TextDecoder
         if (bytes.StartsWith(Encoding.Unicode.Preamble))
             return Encoding.Unicode.GetString(bytes[Encoding.Unicode.Preamble.Length..]);
 
-        // Без BOM: русский текст в 1251 почти никогда не бывает корректным UTF-8,
-        // поэтому пробуем строгий UTF-8 и при ошибке читаем как 1251.
+        // Без BOM: русский текст в 1251 часто бывает некорректным UTF-8,
+        // поэтому сперва пробивается UTF-8 и при ошибке читается как 1251.
         try
         {
             return StrictUtf8.GetString(bytes);

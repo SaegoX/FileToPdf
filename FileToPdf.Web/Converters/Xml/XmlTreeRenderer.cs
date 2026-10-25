@@ -13,11 +13,18 @@ public static class XmlTreeRenderer
     public const int MaxElements = 20000;
 
     private const double IndentCm = 0.5;
-    private const int MaxIndentLevel = 15; // глубже не сдвигаем, иначе текст уедет за край страницы
+    private const int MaxIndentLevel = 15; // ограничение, чтобы текст не уехал за край страницы
 
     private static readonly Color ElementColor = new(0, 84, 147);
     private static readonly Color AttributeColor = new(150, 75, 0);
 
+    /// <summary>
+    /// Преобразует XML-элемент в PDF-документ и записывает результат в указанный поток.
+    /// </summary>
+    /// <param name="root">Корневой XML-элемент для преобразования.</param>
+    /// <param name="options">Параметры преобразования в PDF.</param>
+    /// <param name="output">Поток для записи сгенерированного PDF-документа.</param>
+    /// <exception cref="ConversionException">Выбрасывается, если количество элементов XML превышает максимально допустимое значение.</exception>
     public static void Render(XElement root, ConversionOptions options, Stream output)
     {
         var elementCount = root.DescendantsAndSelf().Count();
@@ -42,6 +49,12 @@ public static class XmlTreeRenderer
         MigraDocPdf.Render(document, output);
     }
 
+    /// <summary>
+    /// Добавляет элемент XML в раздел документа с форматированием, учитывающим уровень вложенности и атрибуты.
+    /// </summary>
+    /// <param name="section">Раздел MigraDoc, в который добавляется элемент.</param>
+    /// <param name="element">XML-элемент, который необходимо отобразить.</param>
+    /// <param name="depth">Текущий уровень вложенности для определения отступа.</param>
     private static void AddElement(Section section, XElement element, int depth)
     {
         var paragraph = section.AddParagraph();
