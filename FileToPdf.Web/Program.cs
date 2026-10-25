@@ -1,4 +1,5 @@
 using FileToPdf.Web.Converters;
+using FileToPdf.Web.Converters.Csv;
 using FileToPdf.Web.Converters.Images;
 using FileToPdf.Web.Converters.Text;
 using FileToPdf.Web.Fonts;
@@ -12,6 +13,7 @@ builder.Services.AddProblemDetails();
 // Конвертеры: чтобы добавить формат, достаточно зарегистрировать здесь новый класс.
 builder.Services.AddSingleton<IPdfConverter, TextToPdfConverter>();
 builder.Services.AddSingleton<IPdfConverter, ImageToPdfConverter>();
+builder.Services.AddSingleton<IPdfConverter, CsvToPdfConverter>();
 builder.Services.AddSingleton<ConverterResolver>();
 
 var app = builder.Build();

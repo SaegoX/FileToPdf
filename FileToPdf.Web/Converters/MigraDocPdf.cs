@@ -10,6 +10,12 @@ namespace FileToPdf.Web.Converters;
 /// </summary>
 public static class MigraDocPdf
 {
+    private const double MarginCm = 1.5;
+
+    /// <summary>Ширина области между полями: нужна, чтобы разделить её между столбцами таблицы.</summary>
+    public static Unit ContentWidth(ConversionOptions options) =>
+        Unit.FromCentimeter((options.Landscape ? 29.7 : 21.0) - 2 * MarginCm);
+
     /// <summary>Пустой документ A4 с одним разделом, нашим шрифтом и выбранной ориентацией.</summary>
     public static Document CreateDocument(ConversionOptions options)
     {
@@ -24,8 +30,8 @@ public static class MigraDocPdf
         var section = document.AddSection();
         section.PageSetup.PageFormat = PageFormat.A4;
         section.PageSetup.Orientation = options.Landscape ? Orientation.Landscape : Orientation.Portrait;
-        section.PageSetup.TopMargin = section.PageSetup.BottomMargin = Unit.FromCentimeter(1.5);
-        section.PageSetup.LeftMargin = section.PageSetup.RightMargin = Unit.FromCentimeter(1.5);
+        section.PageSetup.TopMargin = section.PageSetup.BottomMargin = Unit.FromCentimeter(MarginCm);
+        section.PageSetup.LeftMargin = section.PageSetup.RightMargin = Unit.FromCentimeter(MarginCm);
 
         return document;
     }
