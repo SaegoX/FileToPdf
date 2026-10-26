@@ -43,7 +43,7 @@ var maxFileSize = maxFileSizeMb * 1024L * 1024;
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Что умеет сервер: странице нужно, чтобы подсказать форматы и проверить размер ещё до загрузки.
+// Проверить форматы и проверить размер ещё до загрузки.
 app.MapGet("/api/formats", (ConverterResolver resolver) =>
     new { Extensions = resolver.SupportedExtensions.Order(), MaxFileSizeMb = maxFileSizeMb });
 
