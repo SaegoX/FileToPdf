@@ -12,8 +12,7 @@ using PdfSharp.Fonts;
 // они нужны и при чтении TXT/CSV, и XmlReader-у для файлов с encoding="windows-1251".
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-// Корень приложения — папка с exe, а не текущая папка процесса. Иначе при запуске службой или ярлыком
-// (текущая папка, например, C:\Windows\System32) не найдутся wwwroot и appsettings.json.
+// Корень репозитория из места запуска приложения, чтобы не слетели пути до wwwroot и т.п.
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
@@ -80,7 +79,7 @@ app.MapPost("/api/convert", (IFormFile file, ConverterResolver resolver, [FromFo
     return Results.File(output.ToArray(), "application/pdf", Path.ChangeExtension(file.FileName, ".pdf"));
 })
 
-// Защита от подделки запросов нужна для форм с авторизацией по cookie; у нас ни того, ни другого.
+// Защита от подделки запросов(задел на возможную авторизацию).
 .DisableAntiforgery()
 
 // Проверка размера файла на стороне сервера: если кто-то обойдёт проверку в браузере, сервер всё равно не примет слишком большой файл.
